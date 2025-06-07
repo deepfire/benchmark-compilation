@@ -27,8 +27,21 @@ Options:
     --attr NAME           Build NAME attribute from 'default.nix', instead of
                             profile defaults.  Can be specified multiple times
 
+    --keep-going          While prebuilding profile's packages (nix-build),
+                            instead of giving up immediately on build errors,
+                            do keep going, as far as possible.
+
+    --ghc NIXPKGSGHCNAME  Override the GHC compiler name that defaults
+                            to the value in nix/default-compiler.nix
+
+    --clash-nixpkgs       Use clash pinned by nixpkgs,
+                            itself pinned by nix/pins/nixpkgs.json.
+                            This is the default.
+    --clash-pinned        Use clash pinned by nix/pins/clash.json
+                            This is for adventurers.  Good luck!
+
     --cls
-    --debug, --trace
+    --verbose, --debug, --trace
     --help
 
 Commands:
@@ -50,12 +63,16 @@ default_profiles=(0)
 specs_filename=./'profile-specs.json'
 specs_json=$(realpath "$basedir"/../$specs_filename)
 verbose= debug= trace=
+keep_going=
+clash_from_nixpkgs=false
+ghc=
 
 function main() {
         local profiles=()
         local name= cores= rtsopts= iterations= attrs=() args argsjson
 
-        while test $# -ge 1
+        orig_cmdline="$*"
+        while true
         do case "$1" in
            --profile | -p )    profiles=("${profiles[@]}" $2); shift;;
            --cores | -c )      if test "$2" = 'all'
@@ -65,6 +82,13 @@ function main() {
                                rtsopts=$high_core_rtsopts;;
            --iterations | -n ) iterations=$2; shift;;
            --attr | -a )       attrs=("${attrs[@]}" $2); shift;;
+
+           --keep-going )      keep_going=t;;
+
+           --ghc )             ghc=$2; shift;;
+
+           --clash-nixpkgs )   clash_from_nixpkgs=true;;
+           --clash-pinned )    clash_from_nixpkgs=false;;
 
            --cls )             echo -en "\ec";;
            --dry-run )         dry_run=t;;
@@ -82,6 +106,15 @@ function main() {
         )
         argsjson=$(merge_json_attrs "${args[@]}")
         oprint "args: $(jq -C . <<<$argsjson)"
+        vprint "verbose mode enabled"
+        dprint "debug mode enabled"
+
+        vprint "cmdline:  $0 $orig_cmdline"
+
+        case $clash_from_nixpkgs in
+            true )  echo "Using clash:  from Nixpkgs, as pinned by nix/pins/nixpkgs.json";;
+            false ) echo "Using clash:  directly pinned by nix/pins/clash.json";;
+        esac
 
         op=${1:-$default_op}; shift || true
 
@@ -120,19 +153,28 @@ function args_to_profile() {
 }
 
 function profile_spec_derivations() {
-        local spec=$1 rtsopts xargs nix_args args; shift
+        local spec=$1 rtsopts xargs nix_args=() args; shift
 
         rtsopts=($(jq '.rtsopts // ""' <<<$spec --raw-output))
         if test ${#rtsopts[*]} -gt 0
-        then nix_args=(--arg buildFlags
+        then nix_args+=(--arg buildFlags
                        '["--ghc-options=\"+RTS '"${rtsopts[*]}"' -RTS\""]')
-        else nix_args=(); fi
+        else nix_args+=(); fi
+
+        if test -n "$ghc"
+        then nix_args+=(--argstr compiler "$ghc")
+             echo "Using ghc:  $ghc" >&2
+        else echo "Using ghc:  $(cat nix/default-compiler.nix | xargs echo) (default)" >&2
+        fi
+
+        nix_args+=(--arg clashFromNixpkgs $clash_from_nixpkgs)
 
         jqevq "$spec" '.attributes | join(" ")' |
         words_to_lines |
         while read attr
               test -n "$attr"
-        do args=(--attr "$attr" "${nix_args[@]}")
+        do args=(--quiet "${nix_args[@]}" --attr "$attr" ./default.nix)
+           vprint "instantiate:  nix-instantiate ${args[*]}" >&2
            nix-instantiate "${args[@]}" |
            jq --raw-input
         done | jq --slurp
@@ -202,6 +244,7 @@ function prebuild_profile() {
         drvs=($(jqevqlist "$prof" .derivations))
         args=(
                 --no-build-output
+                $(if test -n "$keep_going"; then echo --keep-going; fi)
                 --no-out-link
                 --cores    4
                 "${drvs[@]}"

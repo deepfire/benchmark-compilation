@@ -23,6 +23,8 @@ let
 in
 { compiler         ? default-compiler
 , buildFlags       ? []
+, clashFromNixpkgs ? false             ## Use a clash.json-pinned version via cabal2nix if false.
+                                       ## Ignore that pin and use the nixpkgs version if true.
 }:
 with pkgs.lib;
 let
@@ -61,7 +63,9 @@ let
       clashPkg =
         with pkgs.haskell.lib;
         pkgSet: name:
-        overrideCabal (pkgSet.callCabal2nix name (clashSrc + "/${name}") {})
+        overrideCabal (if clashFromNixpkgs
+                       then pkgSet.${name}
+                       else pkgSet.callCabal2nix name (clashSrc + "/${name}") {})
           (drv: {
             doCheck   = false;
             doHaddock = false;
@@ -83,7 +87,7 @@ let
       overrides =
         new: old:
         ghcOverrides compiler new old
-        // clashPkgs new;
+        // clashPkgs old;
     };
 
 ### Attributes available for direct building:

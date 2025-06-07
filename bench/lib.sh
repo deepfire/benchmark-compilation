@@ -15,13 +15,15 @@ oprint() {
 }
 
 vprint() {
-    test -n "$verbose" &&
-    echo -e "--( $*" >&2
+    if test -n "$verbose"
+    then echo -e "--( $*" >&2
+    fi
 }
 
 dprint() {
-    test -n "$debug" &&
-    echo -e "--( $*" >&2
+    if test -n "$debug"
+    then echo -e "--( $*" >&2
+    fi
 }
 
 fail() {
