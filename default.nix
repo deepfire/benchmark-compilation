@@ -35,27 +35,16 @@ let
     ghcVer: new: old:
       with pkgs.haskell.lib;
       ({
-        ghc8101 =
-          { hint = new.callCabal2nix "hint" hintSrc {};
-            lens = old.lens_4_19_2;
-            singletons = old.singletons_2_7;
-            cabal-install = overrideCabal old.cabal-install (drv: {
-              postUnpack = "sourceRoot+=/cabal-install; echo source root reset to $sourceRoot";
-              version = "3.2.0.0-git";
-              editedCabalFile = null;
-              src = pkgs.fetchgit {
-                url = "git://github.com/haskell/cabal.git";
-                rev = "9bd4cc0591616aeae78e17167338371a2542a475";
-                sha256 = "005q1shh7vqgykkp72hhmswmrfpz761x0q0jqfnl3wqim4xd9dg0";
-              };
-            });
-          }
-            //
-          (flip genAttrs (x: doJailbreak old.${x})
-            [ "ed25519"
-              "first-class-families"
-              "system-fileio"
-            ]);
+        ghc984 =
+          {
+          };
+        ghc9122 =
+          {
+            Cabal = old.Cabal_3_14_2_0;
+            ghc-tcplugins-extra = old.ghc-tcplugins-extra_0_5;
+            ghc-typelits-extra = dontCheck old.ghc-typelits-extra;
+            ghc-typelits-natnormalise = dontCheck old.ghc-typelits-natnormalise_0_7_11;
+          };
       }).${ghcVer};
 
   clashPkgs =
